@@ -5,6 +5,9 @@ require_once __DIR__ . '/../core/Response.php';
 require_once __DIR__ . '/../core/RateLimit.php';
 require_once __DIR__ . '/../core/Utils.php';
 require_once __DIR__ . '/../core/Storage.php';
+require_once __DIR__ . '/../core/Statistics.php';
+require_once __DIR__ . '/../core/Logger.php';
+require_once __DIR__ . '/../core/FileSecurity.php';
 require_once __DIR__ . '/../models/FileCodes.php';
 require_once __DIR__ . '/../models/KeyValue.php';
 
@@ -33,31 +36,39 @@ function handleShareApi() {
 
     $ip = RateLimit::getClientIp();
     $storage = Storage::getStorage();
+    $stats = new Statistics();
+    $logger = new Logger();
 
     switch ($path) {
         case '/text/':
             if ($method === 'POST') {
-                handleShareText($ip);
+                handleShareText($ip, $stats);
             }
             break;
 
         case '/file/':
             if ($method === 'POST') {
-                handleShareFile($ip, $storage);
+                handleShareFile($ip, $storage, $stats, $logger);
             }
             break;
 
         case '/select/':
             if ($method === 'GET') {
-                handleSelectFile($ip, $storage);
+                handleSelectFile($ip, $storage, $stats, $logger);
             } elseif ($method === 'POST') {
-                handleSelectFilePost($ip, $storage);
+                handleSelectFilePost($ip, $storage, $stats, $logger);
             }
             break;
 
         case '/download':
             if ($method === 'GET') {
-                handleDownload($ip, $storage);
+                handleDownload($ip, $storage, $stats, $logger);
+            }
+            break;
+
+        case '/preview':
+            if ($method === 'GET') {
+                handlePreview($ip, $storage);
             }
             break;
 
@@ -66,7 +77,7 @@ function handleShareApi() {
     }
 }
 
-function handleShareText($ip) {
+function handleShareText($ip, $stats) {
     checkAdmin(false);
 
     if (!RateLimit::check('upload', $ip)) {
@@ -99,11 +110,12 @@ function handleShareText($ip) {
         'prefix' => '文本分享'
     ]);
 
+    $stats->recordUpload($fileCode);
     RateLimit::addHit('upload', $ip);
     Response::success(['code' => $fileCode->code]);
 }
 
-function handleShareFile($ip, $storage) {
+function handleShareFile($ip, $storage, $stats, $logger) {
     checkAdmin(false);
 
     if (!RateLimit::check('upload', $ip)) {
@@ -118,10 +130,19 @@ function handleShareFile($ip, $storage) {
 
     $file = $_FILES['file'];
     $fileSize = $file['size'];
+    $fileName = $file['name'];
 
     if ($fileSize > $settings['uploadSize']) {
         $maxSizeMb = $settings['uploadSize'] / (1024 * 1024);
         Response::forbidden("大小超过限制，最大为{$maxSizeMb} MB");
+    }
+
+    if (!FileSecurity::isAllowedExtension($fileName)) {
+        Response::forbidden('不允许上传此类型的文件');
+    }
+
+    if (FileSecurity::isBlockedMimeType($file['type'])) {
+        Response::forbidden('文件类型被阻止');
     }
 
     $expireValue = intval($_POST['expire_value'] ?? 1);
@@ -132,7 +153,7 @@ function handleShareFile($ip, $storage) {
     }
 
     $expireInfo = Utils::getExpireInfo($expireValue, $expireStyle);
-    $fileInfo = Utils::getFilePathName($file['name']);
+    $fileInfo = Utils::getFilePathName($fileName);
 
     $storage->saveFile($file, $fileInfo['save_path']);
 
@@ -148,14 +169,16 @@ function handleShareFile($ip, $storage) {
         'used_count' => $expireInfo['used_count']
     ]);
 
+    $stats->recordUpload($fileCode);
+    $logger->recordAction('upload_file', $fileName, 'success');
     RateLimit::addHit('upload', $ip);
     Response::success([
         'code' => $fileCode->code,
-        'name' => $file['name']
+        'name' => $fileName
     ]);
 }
 
-function handleSelectFile($ip, $storage) {
+function handleSelectFile($ip, $storage, $stats, $logger) {
     $code = $_GET['code'] ?? '';
 
     if (empty($code)) {
@@ -180,10 +203,12 @@ function handleSelectFile($ip, $storage) {
     }
     $fileCode->save();
 
+    $stats->recordDownload($fileCode);
+    $logger->recordAccess($code, 'download');
     $storage->getFileResponse($fileCode);
 }
 
-function handleSelectFilePost($ip, $storage) {
+function handleSelectFilePost($ip, $storage, $stats, $logger) {
     $input = json_decode(file_get_contents('php://input'), true);
     $code = $input['code'] ?? '';
 
@@ -209,6 +234,9 @@ function handleSelectFilePost($ip, $storage) {
     }
     $fileCode->save();
 
+    $stats->recordDownload($fileCode);
+    $logger->recordAccess($code, 'view');
+
     if ($fileCode->text) {
         Response::success([
             'code' => $fileCode->code,
@@ -226,7 +254,7 @@ function handleSelectFilePost($ip, $storage) {
     }
 }
 
-function handleDownload($ip, $storage) {
+function handleDownload($ip, $storage, $stats, $logger) {
     $key = $_GET['key'] ?? '';
     $code = $_GET['code'] ?? '';
 
@@ -246,9 +274,59 @@ function handleDownload($ip, $storage) {
         Response::notFound('文件不存在');
     }
 
+    $stats->recordDownload($fileCode);
+    $logger->recordAccess($code, 'download');
+
     if ($fileCode->text) {
         Response::success($fileCode->text);
     } else {
         $storage->getFileResponse($fileCode);
+    }
+}
+
+function handlePreview($ip, $storage) {
+    $code = $_GET['code'] ?? '';
+
+    if (empty($code)) {
+        Response::forbidden('缺少code参数');
+    }
+
+    $fileCode = FileCodes::findByCode($code);
+
+    if (!$fileCode) {
+        Response::notFound('文件不存在');
+    }
+
+    if ($fileCode->isExpired()) {
+        Response::notFound('文件已过期');
+    }
+
+    if ($fileCode->text) {
+        Response::success([
+            'type' => 'text',
+            'content' => $fileCode->text
+        ]);
+    } else {
+        $filePath = DATA_ROOT . '/' . $fileCode->getFilePath();
+        $previewType = FilePreview::getPreviewType($fileCode->suffix);
+        
+        if ($previewType === 'image') {
+            $previewData = FilePreview::getImagePreview($filePath);
+            Response::success([
+                'type' => 'image',
+                'content' => $previewData
+            ]);
+        } elseif ($previewType === 'text') {
+            $previewData = FilePreview::getTextPreview($filePath);
+            Response::success([
+                'type' => 'text',
+                'content' => $previewData
+            ]);
+        } else {
+            Response::success([
+                'type' => 'download',
+                'content' => null
+            ]);
+        }
     }
 }

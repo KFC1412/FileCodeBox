@@ -9,12 +9,23 @@ if (!file_exists(DATA_ROOT)) {
 
 $default_config = [
     'file_storage' => 'local',
-    'name' => '文件快递柜 - FilePhpBox',
-    'description' => '开箱即用的文件快传系统 (PHP版)',
-    'notify_title' => '系统通知',
-    'notify_content' => '欢迎使用 FilePhpBox (FPB)，基于 PHP + JSON 的轻量级文件分享系统。',
-    'page_explain' => '请勿上传或分享违法内容。根据《中华人民共和国网络安全法》、《中华人民共和国刑法》、《中华人民共和国治安管理处罚法》等相关规定。 传播或存储违法、违规内容，会受到相关处罚，严重者将承担刑事责任。本站坚决配合相关部门，确保网络内容的安全，和谐，打造绿色网络环境。',
-    'keywords' => 'FilePhpBox, FPB, 文件快递柜, 口令传送箱, 匿名口令分享文本, 文件, PHP',
+    'name' => 'FilePhpBox',
+    'name_zh' => '文件快递柜',
+    'description' => 'Lightweight file sharing system based on PHP + JSON',
+    'description_zh' => '基于 PHP + JSON 的轻量级文件分享系统',
+    'notify_title' => 'System Notification',
+    'notify_title_zh' => '系统通知',
+    'notify_content' => 'Welcome to FilePhpBox (FPB)',
+    'notify_content_zh' => '欢迎使用 FilePhpBox (FPB)',
+    'page_explain' => 'Do not upload or share illegal content.',
+    'page_explain_zh' => '请勿上传或分享违法内容。',
+    'keywords' => 'FilePhpBox, FPB, file sharing, PHP',
+    'keywords_zh' => 'FilePhpBox, FPB, 文件快递柜, 文件分享',
+    'default_lang' => 'zh',
+    'allowed_extensions' => 'jpg,jpeg,png,gif,bmp,webp,svg,txt,md,pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar,7z,tar,gz,php,js,html,css,json,xml,py,java,cpp,mp3,wav,ogg,flac,mp4,webm',
+    'blocked_extensions' => 'exe,com,bat,cmd,msi,dll,scr,pif,sys',
+    'enable_file_encryption' => false,
+    'encryption_key' => '',
     's3_access_key_id' => '',
     's3_secret_access_key' => '',
     's3_bucket_name' => '',
@@ -24,6 +35,7 @@ $default_config = [
     's3_hostname' => '',
     's3_proxy' => 0,
     'max_save_seconds' => 0,
+    'max_upload_size' => 1024 * 1024 * 10,
     'aws_session_token' => '',
     'onedrive_domain' => '',
     'onedrive_client_id' => '',
@@ -32,6 +44,9 @@ $default_config = [
     'onedrive_root_path' => 'fpb_storage',
     'onedrive_proxy' => 0,
     'admin_token' => 'zxc123456',
+    'session_expire_minutes' => 60,
+    'max_login_attempts' => 5,
+    'login_lockout_minutes' => 15,
     'openUpload' => 1,
     'uploadSize' => 1024 * 1024 * 10,
     'expireStyle' => ['day', 'hour', 'minute', 'forever', 'count'],
@@ -44,6 +59,11 @@ $default_config = [
     'robotsText' => "User-agent: *\nDisallow: /",
     'opacity' => 0.9,
     'background' => '',
+    'enable_qrcode' => true,
+    'enable_password_protection' => true,
+    'enable_preview' => true,
+    'storage_warning_threshold' => 90,
+    'log_level' => 'info'
 ];
 
 $config_file = DATA_ROOT . '/config.json';
@@ -65,3 +85,7 @@ function save_settings($new_settings) {
     $settings = array_merge($settings, $new_settings);
     file_put_contents($config_file, json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 }
+
+require_once __DIR__ . '/core/Translator.php';
+Translator::createDefaultLangFiles();
+Translator::setLang($settings['default_lang']);
