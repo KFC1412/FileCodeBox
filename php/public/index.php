@@ -4,8 +4,11 @@ require_once __DIR__ . '/config.php';
 
 $uri = $_SERVER['REQUEST_URI'];
 $path = parse_url($uri, PHP_URL_PATH);
+$method = $_SERVER['REQUEST_METHOD'];
 
-if (strpos($path, '/api/share') === 0 || strpos($path, '/share') === 0) {
+if ($path === '/' && $method === 'POST') {
+    handleRootConfig();
+} elseif (strpos($path, '/api/share') === 0 || strpos($path, '/share') === 0) {
     require_once __DIR__ . '/api/share.php';
     handleShareApi();
 } elseif (strpos($path, '/api/admin') === 0 || strpos($path, '/admin') === 0) {
@@ -20,6 +23,26 @@ if (strpos($path, '/api/share') === 0 || strpos($path, '/share') === 0) {
     serveAssets($path);
 } else {
     serveIndexHtml();
+}
+
+function handleRootConfig() {
+    global $settings;
+
+    header('Content-Type: application/json');
+    echo json_encode([
+        'code' => 200,
+        'message' => 'ok',
+        'detail' => [
+            'explain' => $settings['page_explain'],
+            'uploadSize' => $settings['uploadSize'],
+            'expireStyle' => $settings['expireStyle'],
+            'openUpload' => $settings['openUpload'],
+            'notify_title' => $settings['notify_title'],
+            'notify_content' => $settings['notify_content'],
+            'show_admin_address' => $settings['showAdminAddr'],
+        ]
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
 function serveIndexHtml() {
