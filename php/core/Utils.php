@@ -1,8 +1,10 @@
 <?php
 
+require_once __DIR__ . '/JSONStorage.php';
+
 class Utils {
     public static function generateCode($style = 'num') {
-        $pdo = Database::getConnection();
+        global $jsonStorage;
 
         do {
             if ($style === 'string') {
@@ -15,9 +17,7 @@ class Utils {
                 $code = random_int(10000, 99999);
             }
 
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM file_codes WHERE code = ?");
-            $stmt->execute([$code]);
-            $exists = $stmt->fetchColumn() > 0;
+            $exists = $jsonStorage->exists('file_codes', 'code', $code);
         } while ($exists);
 
         return $code;

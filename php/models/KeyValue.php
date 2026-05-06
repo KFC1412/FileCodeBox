@@ -1,6 +1,6 @@
 <?php
 
-require_once BASE_DIR . '/database.php';
+require_once __DIR__ . '/../core/JSONStorage.php';
 
 class KeyValue {
     public $id;
@@ -9,13 +9,11 @@ class KeyValue {
     public $created_at;
 
     public static function get($key) {
-        $pdo = Database::getConnection();
-        $stmt = $pdo->prepare("SELECT * FROM key_value WHERE `key` = ? LIMIT 1");
-        $stmt->execute([$key]);
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($result) {
+        global $jsonStorage;
+        $data = $jsonStorage->findBy('key_value', 'key', $key);
+        if ($data) {
             $kv = new self();
-            foreach ($result as $k => $v) {
+            foreach ($data as $k => $v) {
                 $kv->$k = $v;
             }
             return $kv;
@@ -24,13 +22,27 @@ class KeyValue {
     }
 
     public static function set($key, $value) {
-        $pdo = Database::getConnection();
-        $stmt = $pdo->prepare("
-            INSERT INTO key_value (`key`, `value`, created_at)
-            VALUES (:key, :value, datetime('now', '+8 hours'))
-            ON CONFLICT(`key`) DO UPDATE SET `value` = :value2
-        ");
-        $valueJson = is_string($value) ? $value : json_encode($value);
-        $stmt->execute([':key' => $key, ':value' => $valueJson, ':value2' => $valueJson]);
+        global $jsonStorage;
+        $data = $jsonStorage->findBy('key_value', 'key', $key);
+        
+        $saveData = [
+            'key' => $key,
+            'value' => is_string($value) ? $value : json_encode($value),
+        ];
+        
+        if ($data) {
+            $saveData['id'] = $data['id'];
+        }
+        
+        $jsonStorage->save('key_value', $saveData);
+    }
+
+    public static function getValue($key, $default = null) {
+        $kv = self::get($key);
+        if ($kv) {
+            $decoded = json_decode($kv->value, true);
+            return $decoded !== null ? $decoded : $kv->value;
+        }
+        return $default;
     }
 }
