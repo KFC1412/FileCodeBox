@@ -8,6 +8,10 @@ require_once __DIR__ . '/../core/Storage.php';
 require_once __DIR__ . '/../core/Statistics.php';
 require_once __DIR__ . '/../core/Logger.php';
 require_once __DIR__ . '/../core/FileSecurity.php';
+require_once __DIR__ . '/../core/FilePreview.php';
+require_once __DIR__ . '/../core/ThumbnailManager.php';
+require_once __DIR__ . '/../core/ShareSettings.php';
+require_once __DIR__ . '/../core/ShareHistory.php';
 require_once __DIR__ . '/../models/FileCodes.php';
 require_once __DIR__ . '/../models/KeyValue.php';
 
@@ -72,6 +76,18 @@ function handleShareApi() {
             }
             break;
 
+        case '/thumbnail':
+            if ($method === 'GET') {
+                handleThumbnail($ip);
+            }
+            break;
+
+        case '/verify':
+            if ($method === 'POST') {
+                handleVerifyPassword($ip);
+            }
+            break;
+
         default:
             Response::notFound('API不存在');
     }
@@ -87,6 +103,7 @@ function handleShareText($ip, $stats) {
     $text = $_POST['text'] ?? '';
     $expireValue = intval($_POST['expire_value'] ?? 1);
     $expireStyle = $_POST['expire_style'] ?? 'day';
+    $sharePassword = $_POST['password'] ?? null;
 
     if (empty($text)) {
         Response::forbidden('文本内容不能为空');
@@ -110,6 +127,10 @@ function handleShareText($ip, $stats) {
         'prefix' => '文本分享'
     ]);
 
+    if ($sharePassword) {
+        ShareSettings::setPassword($fileCode->code, $sharePassword);
+    }
+
     $stats->recordUpload($fileCode);
     RateLimit::addHit('upload', $ip);
     Response::success(['code' => $fileCode->code]);
@@ -131,6 +152,7 @@ function handleShareFile($ip, $storage, $stats, $logger) {
     $file = $_FILES['file'];
     $fileSize = $file['size'];
     $fileName = $file['name'];
+    $sharePassword = $_POST['password'] ?? null;
 
     if ($fileSize > $settings['uploadSize']) {
         $maxSizeMb = $settings['uploadSize'] / (1024 * 1024);
@@ -169,6 +191,15 @@ function handleShareFile($ip, $storage, $stats, $logger) {
         'used_count' => $expireInfo['used_count']
     ]);
 
+    if ($settings['enable_thumbnails']) {
+        $filePath = DATA_ROOT . '/' . $fileCode->getFilePath();
+        ThumbnailManager::generateThumbnail($filePath, $fileName);
+    }
+
+    if ($sharePassword) {
+        ShareSettings::setPassword($fileCode->code, $sharePassword);
+    }
+
     $stats->recordUpload($fileCode);
     $logger->recordAction('upload_file', $fileName, 'success');
     RateLimit::addHit('upload', $ip);
@@ -180,6 +211,7 @@ function handleShareFile($ip, $storage, $stats, $logger) {
 
 function handleSelectFile($ip, $storage, $stats, $logger) {
     $code = $_GET['code'] ?? '';
+    $password = $_GET['password'] ?? null;
 
     if (empty($code)) {
         Response::forbidden('缺少code参数');
@@ -195,6 +227,13 @@ function handleSelectFile($ip, $storage, $stats, $logger) {
     if ($fileCode->isExpired()) {
         RateLimit::addHit('error', $ip);
         Response::notFound('文件已过期');
+    }
+
+    $shareSettings = ShareSettings::getSettings($code);
+    if ($shareSettings && $shareSettings['password']) {
+        if (!$password || !ShareSettings::verifyPassword($code, $password)) {
+            Response::unauthorized('需要密码才能访问此文件');
+        }
     }
 
     $fileCode->used_count++;
@@ -211,6 +250,7 @@ function handleSelectFile($ip, $storage, $stats, $logger) {
 function handleSelectFilePost($ip, $storage, $stats, $logger) {
     $input = json_decode(file_get_contents('php://input'), true);
     $code = $input['code'] ?? '';
+    $password = $input['password'] ?? null;
 
     if (empty($code)) {
         Response::forbidden('缺少code参数');
@@ -228,6 +268,13 @@ function handleSelectFilePost($ip, $storage, $stats, $logger) {
         Response::notFound('文件已过期');
     }
 
+    $shareSettings = ShareSettings::getSettings($code);
+    if ($shareSettings && $shareSettings['password']) {
+        if (!$password || !ShareSettings::verifyPassword($code, $password)) {
+            Response::unauthorized('需要密码才能访问此文件');
+        }
+    }
+
     $fileCode->used_count++;
     if ($fileCode->expired_count > 0) {
         $fileCode->expired_count--;
@@ -242,14 +289,17 @@ function handleSelectFilePost($ip, $storage, $stats, $logger) {
             'code' => $fileCode->code,
             'name' => $fileCode->prefix . $fileCode->suffix,
             'size' => $fileCode->size,
-            'text' => $fileCode->text
+            'text' => $fileCode->text,
+            'has_password' => $shareSettings && $shareSettings['password'] ? true : false
         ]);
     } else {
         Response::success([
             'code' => $fileCode->code,
             'name' => $fileCode->prefix . $fileCode->suffix,
             'size' => $fileCode->size,
-            'text' => $storage->getFileUrl($fileCode)
+            'text' => $storage->getFileUrl($fileCode),
+            'has_password' => $shareSettings && $shareSettings['password'] ? true : false,
+            'thumbnail_available' => ThumbnailManager::getThumbnailUrl($code) !== null
         ]);
     }
 }
@@ -286,6 +336,7 @@ function handleDownload($ip, $storage, $stats, $logger) {
 
 function handlePreview($ip, $storage) {
     $code = $_GET['code'] ?? '';
+    $password = $_GET['password'] ?? null;
 
     if (empty($code)) {
         Response::forbidden('缺少code参数');
@@ -299,6 +350,13 @@ function handlePreview($ip, $storage) {
 
     if ($fileCode->isExpired()) {
         Response::notFound('文件已过期');
+    }
+
+    $shareSettings = ShareSettings::getSettings($code);
+    if ($shareSettings && $shareSettings['password']) {
+        if (!$password || !ShareSettings::verifyPassword($code, $password)) {
+            Response::unauthorized('需要密码才能访问此文件');
+        }
     }
 
     if ($fileCode->text) {
@@ -329,4 +387,52 @@ function handlePreview($ip, $storage) {
             ]);
         }
     }
+}
+
+function handleThumbnail($ip) {
+    $code = $_GET['code'] ?? '';
+
+    if (empty($code)) {
+        Response::forbidden('缺少code参数');
+    }
+
+    $fileCode = FileCodes::findByCode($code);
+
+    if (!$fileCode) {
+        Response::notFound('文件不存在');
+    }
+
+    $thumbnailPath = ThumbnailManager::getThumbnailUrl($code);
+    if (!$thumbnailPath) {
+        Response::notFound('无缩略图');
+    }
+
+    $fullPath = DATA_ROOT . '/' . $thumbnailPath;
+    if (!file_exists($fullPath)) {
+        Response::notFound('缩略图文件不存在');
+    }
+
+    $mimeType = mime_content_type($fullPath);
+    header('Content-Type: ' . $mimeType);
+    header('Cache-Control: public, max-age=86400');
+    readfile($fullPath);
+    exit;
+}
+
+function handleVerifyPassword($ip) {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $code = $input['code'] ?? '';
+    $password = $input['password'] ?? '';
+
+    if (empty($code)) {
+        Response::forbidden('缺少code参数');
+    }
+
+    $shareSettings = ShareSettings::getSettings($code);
+    if (!$shareSettings || !$shareSettings['password']) {
+        Response::success(['valid' => true, 'required' => false]);
+    }
+
+    $valid = ShareSettings::verifyPassword($code, $password);
+    Response::success(['valid' => $valid, 'required' => true]);
 }

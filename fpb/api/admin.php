@@ -7,6 +7,11 @@ require_once __DIR__ . '/../core/Storage.php';
 require_once __DIR__ . '/../core/Statistics.php';
 require_once __DIR__ . '/../core/Logger.php';
 require_once __DIR__ . '/../core/LoginGuard.php';
+require_once __DIR__ . '/../core/ShareSettings.php';
+require_once __DIR__ . '/../core/ShareHistory.php';
+require_once __DIR__ . '/../core/ThumbnailManager.php';
+require_once __DIR__ . '/../core/ThemeManager.php';
+require_once __DIR__ . '/../core/FileSearch.php';
 require_once __DIR__ . '/../models/FileCodes.php';
 require_once __DIR__ . '/../models/KeyValue.php';
 
@@ -64,7 +69,13 @@ function handleAdminApi() {
 
         case '/file/search':
             if ($method === 'GET') {
-                handleFileSearch();
+                handleAdvancedFileSearch();
+            }
+            break;
+
+        case '/file/filters':
+            if ($method === 'GET') {
+                handleFileFilters();
             }
             break;
 
@@ -83,6 +94,58 @@ function handleAdminApi() {
         case '/file/download':
             if ($method === 'GET') {
                 handleFileDownload($storage);
+            }
+            break;
+
+        case '/share/settings':
+            if ($method === 'GET') {
+                handleGetShareSettings();
+            } elseif ($method === 'POST') {
+                handleCreateShareSettings();
+            } elseif ($method === 'PUT') {
+                handleUpdateShareSettings();
+            }
+            break;
+
+        case '/share/settings/password':
+            if ($method === 'POST') {
+                handleSetSharePassword();
+            }
+            break;
+
+        case '/share/history':
+            if ($method === 'GET') {
+                handleShareHistory();
+            }
+            break;
+
+        case '/share/history/statistics':
+            if ($method === 'GET') {
+                handleShareStatistics();
+            }
+            break;
+
+        case '/share/history/clear':
+            if ($method === 'POST') {
+                handleClearHistory($logger);
+            }
+            break;
+
+        case '/hotfiles':
+            if ($method === 'GET') {
+                handleHotFiles();
+            }
+            break;
+
+        case '/theme/get':
+            if ($method === 'GET') {
+                handleThemeGet();
+            }
+            break;
+
+        case '/theme/set':
+            if ($method === 'POST') {
+                handleThemeSet();
             }
             break;
 
@@ -181,6 +244,9 @@ function handleFileDelete($storage, $logger) {
     }
 
     $fileName = $fileCode->prefix . $fileCode->suffix;
+    ThumbnailManager::deleteThumbnail($fileCode->code);
+    ShareHistory::clearHistory($fileCode->code);
+    ShareSettings::deleteSettings($fileCode->code);
     $storage->deleteFile($fileCode);
     $fileCode->delete();
 
@@ -202,6 +268,9 @@ function handleBatchDelete($storage, $logger) {
     foreach ($ids as $id) {
         $fileCode = FileCodes::findById($id);
         if ($fileCode) {
+            ThumbnailManager::deleteThumbnail($fileCode->code);
+            ShareHistory::clearHistory($fileCode->code);
+            ShareSettings::deleteSettings($fileCode->code);
             $storage->deleteFile($fileCode);
             $fileCode->delete();
             $deletedCount++;
@@ -234,38 +303,27 @@ function handleFileList() {
     ]);
 }
 
-function handleFileSearch() {
+function handleAdvancedFileSearch() {
     checkAdmin(true);
 
-    $keyword = $_GET['keyword'] ?? '';
-    $page = intval($_GET['page'] ?? 1);
-    $size = intval($_GET['size'] ?? 10);
+    $query = $_GET['q'] ?? '';
+    $options = [
+        'page' => intval($_GET['page'] ?? 1),
+        'size' => intval($_GET['size'] ?? 20),
+        'type' => $_GET['type'] ?? null,
+        'date_from' => $_GET['date_from'] ?? null,
+        'date_to' => $_GET['date_to'] ?? null,
+        'sort_by' => $_GET['sort_by'] ?? 'created_at',
+        'sort_order' => $_GET['sort_order'] ?? 'desc'
+    ];
 
-    if (!$keyword) {
-        handleFileList();
-        return;
-    }
+    $result = FileSearch::search($query, $options);
+    Response::success($result);
+}
 
-    $allFiles = FileCodes::all();
-    $filtered = array_filter($allFiles, function($file) use ($keyword) {
-        return strpos(strtolower($file->code), strtolower($keyword)) !== false ||
-               strpos(strtolower($file->prefix), strtolower($keyword)) !== false ||
-               strpos(strtolower($file->suffix), strtolower($keyword)) !== false;
-    });
-
-    $total = count($filtered);
-    $files = array_slice($filtered, ($page - 1) * $size, $size);
-
-    $data = array_map(function($file) {
-        return $file->toArray();
-    }, $files);
-
-    Response::success([
-        'page' => $page,
-        'size' => $size,
-        'data' => $data,
-        'total' => $total
-    ]);
+function handleFileFilters() {
+    checkAdmin(true);
+    Response::success(FileSearch::getFilters());
 }
 
 function handleCleanExpired($storage, $logger) {
@@ -276,6 +334,9 @@ function handleCleanExpired($storage, $logger) {
 
     foreach ($files as $file) {
         if ($file->isExpired()) {
+            ThumbnailManager::deleteThumbnail($file->code);
+            ShareHistory::clearHistory($file->code);
+            ShareSettings::deleteSettings($file->code);
             $storage->deleteFile($file);
             $file->delete();
             $deletedCount++;
@@ -322,6 +383,117 @@ function handleFileDownload($storage) {
     }
 }
 
+function handleGetShareSettings() {
+    checkAdmin(true);
+    $code = $_GET['code'] ?? '';
+    
+    if (!$code) {
+        Response::forbidden('缺少分享码');
+    }
+
+    $settings = ShareSettings::getSettings($code);
+    Response::success($settings);
+}
+
+function handleCreateShareSettings() {
+    checkAdmin(true);
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    $code = $input['code'] ?? '';
+    if (!$code) {
+        Response::forbidden('缺少分享码');
+    }
+
+    $settings = ShareSettings::createSettings($code, $input);
+    Response::success($settings);
+}
+
+function handleUpdateShareSettings() {
+    checkAdmin(true);
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    $code = $input['code'] ?? '';
+    if (!$code) {
+        Response::forbidden('缺少分享码');
+    }
+
+    $result = ShareSettings::updateSettings($code, $input);
+    Response::success(['updated' => $result]);
+}
+
+function handleSetSharePassword() {
+    checkAdmin(true);
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    $code = $input['code'] ?? '';
+    $password = $input['password'] ?? '';
+    
+    if (!$code) {
+        Response::forbidden('缺少分享码');
+    }
+
+    $result = ShareSettings::setPassword($code, $password);
+    Response::success(['updated' => $result]);
+}
+
+function handleShareHistory() {
+    checkAdmin(true);
+    $code = $_GET['code'] ?? null;
+    $limit = intval($_GET['limit'] ?? 100);
+    
+    $history = ShareHistory::getHistory($code, $limit);
+    Response::success(['history' => $history]);
+}
+
+function handleShareStatistics() {
+    checkAdmin(true);
+    $code = $_GET['code'] ?? null;
+    
+    $stats = ShareHistory::getStatistics($code);
+    Response::success($stats);
+}
+
+function handleClearHistory($logger) {
+    checkAdmin(true);
+    $input = json_decode(file_get_contents('php://input'), true);
+    $code = $input['code'] ?? null;
+    
+    ShareHistory::clearHistory($code);
+    $logger->recordAction('clear_history', $code ?? 'all', 'success');
+    Response::success();
+}
+
+function handleHotFiles() {
+    global $settings;
+    
+    if (!$settings['enable_hot_files']) {
+        Response::success(['hot_files' => []]);
+    }
+    
+    $limit = intval($_GET['limit'] ?? $settings['hot_files_limit']);
+    $days = intval($_GET['days'] ?? $settings['hot_files_days']);
+    
+    $hotFiles = ShareHistory::getHotFiles($limit, $days);
+    Response::success(['hot_files' => $hotFiles]);
+}
+
+function handleThemeGet() {
+    checkAdmin(true);
+    Response::success([
+        'themes' => ThemeManager::getThemes(),
+        'current' => ThemeManager::getDefaultTheme()
+    ]);
+}
+
+function handleThemeSet() {
+    checkAdmin(true);
+    $input = json_decode(file_get_contents('php://input'), true);
+    $theme = $input['theme'] ?? 'light';
+    
+    ThemeManager::setDefaultTheme($theme);
+    Response::success();
+}
+
 function handleConfigGet() {
     checkAdmin(true);
     global $settings, $default_config;
@@ -340,9 +512,9 @@ function handleConfigUpdate($logger) {
     $input = json_decode(file_get_contents('php://input'), true);
     global $settings, $default_config;
 
-    $intFields = ['errorCount', 'errorMinute', 'max_save_seconds', 'onedrive_proxy', 'openUpload', 'port', 's3_proxy', 'uploadCount', 'uploadMinute', 'uploadSize', 'max_upload_size', 'session_expire_minutes', 'max_login_attempts', 'login_lockout_minutes', 'storage_warning_threshold'];
+    $intFields = ['errorCount', 'errorMinute', 'max_save_seconds', 'onedrive_proxy', 'openUpload', 'port', 's3_proxy', 'uploadCount', 'uploadMinute', 'uploadSize', 'max_upload_size', 'session_expire_minutes', 'max_login_attempts', 'login_lockout_minutes', 'storage_warning_threshold', 'hot_files_limit', 'hot_files_days', 'max_history_days'];
     $floatFields = ['opacity'];
-    $boolFields = ['enable_file_encryption', 'enable_qrcode', 'enable_password_protection', 'enable_preview'];
+    $boolFields = ['enable_file_encryption', 'enable_qrcode', 'enable_password_protection', 'enable_preview', 'enable_thumbnails', 'enable_hot_files', 'enable_share_history'];
 
     $newSettings = [];
     foreach ($input as $key => $value) {

@@ -1,0 +1,72 @@
+<?php
+
+class ThemeManager {
+    private static $themes = ['light', 'dark', 'auto'];
+    private static $defaultTheme = 'light';
+
+    public static function getThemes() {
+        return self::$themes;
+    }
+
+    public static function getDefaultTheme() {
+        global $settings;
+        return $settings['default_theme'] ?? self::$defaultTheme;
+    }
+
+    public static function setDefaultTheme($theme) {
+        if (!in_array($theme, self::$themes)) {
+            return false;
+        }
+
+        saveSettings(['default_theme' => $theme]);
+        return true;
+    }
+
+    public static function getUserTheme($cookie = null) {
+        if ($cookie && in_array($cookie, self::$themes)) {
+            return $cookie;
+        }
+
+        return self::getDefaultTheme();
+    }
+
+    public static function getCSSVariables($theme) {
+        $lightVars = [
+            '--bg-primary' => '#ffffff',
+            '--bg-secondary' => '#f8f9fa',
+            '--text-primary' => '#212529',
+            '--text-secondary' => '#6c757d',
+            '--border-color' => '#dee2e6',
+            '--primary-color' => '#409eff',
+            '--success-color' => '#67c23a',
+            '--warning-color' => '#e6a23c',
+            '--danger-color' => '#f56c6c'
+        ];
+
+        $darkVars = [
+            '--bg-primary' => '#1e1e2e',
+            '--bg-secondary' => '#11111b',
+            '--text-primary' => '#cdd6f4',
+            '--text-secondary' => '#a6adc8',
+            '--border-color' => '#45475a',
+            '--primary-color' => '#89b4fa',
+            '--success-color' => '#a6e3a1',
+            '--warning-color' => '#f9e2af',
+            '--danger-color' => '#f38ba8'
+        ];
+
+        return $theme === 'dark' ? $darkVars : $lightVars;
+    }
+
+    public static function generateCSS($theme) {
+        $vars = self::getCSSVariables($theme);
+        $css = ":root {\n";
+        
+        foreach ($vars as $name => $value) {
+            $css .= "  {$name}: {$value};\n";
+        }
+        
+        $css .= "}\n";
+        return $css;
+    }
+}

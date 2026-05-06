@@ -1,0 +1,97 @@
+<?php
+
+class FileSearch {
+    public static function search($query, $options = []) {
+        $page = $options['page'] ?? 1;
+        $size = $options['size'] ?? 20;
+        $typeFilter = $options['type'] ?? null;
+        $dateFrom = $options['date_from'] ?? null;
+        $dateTo = $options['date_to'] ?? null;
+        $sortBy = $options['sort_by'] ?? 'created_at';
+        $sortOrder = $options['sort_order'] ?? 'desc';
+
+        $allFiles = FileCodes::all(null, 0);
+        $query = strtolower($query);
+
+        $filtered = array_filter($allFiles, function($fileCode) use ($query, $typeFilter, $dateFrom, $dateTo) {
+            $match = false;
+
+            if ($query) {
+                $match = strpos(strtolower($fileCode->code), $query) !== false ||
+                         strpos(strtolower($fileCode->prefix), $query) !== false;
+            } else {
+                $match = true;
+            }
+
+            if ($typeFilter && $match) {
+                if ($typeFilter === 'text' && !$fileCode->text) {
+                    $match = false;
+                } elseif ($typeFilter === 'file' && $fileCode->text) {
+                    $match = false;
+                }
+            }
+
+            if ($dateFrom && $match) {
+                $createdTime = strtotime($fileCode->created_at);
+                if ($createdTime < strtotime($dateFrom)) {
+                    $match = false;
+                }
+            }
+
+            if ($dateTo && $match) {
+                $createdTime = strtotime($fileCode->created_at);
+                if ($createdTime > strtotime($dateTo)) {
+                    $match = false;
+                }
+            }
+
+            return $match;
+        });
+
+        usort($filtered, function($a, $b) use ($sortBy, $sortOrder) {
+            $valueA = $a->$sortBy;
+            $valueB = $b->$sortBy;
+
+            if (is_numeric($valueA) && is_numeric($valueB)) {
+                $result = $valueA <=> $valueB;
+            } else {
+                $result = strcmp($valueA, $valueB);
+            }
+
+            return $sortOrder === 'desc' ? -$result : $result;
+        });
+
+        $total = count($filtered);
+        $offset = ($page - 1) * $size;
+        $paged = array_slice($filtered, $offset, $size);
+
+        $result = array_map(function($fileCode) {
+            return array_merge($fileCode->toArray(), [
+                'type' => $fileCode->text ? 'text' : 'file',
+                'size_formatted' => Utils::formatBytes($fileCode->size)
+            ]);
+        }, $paged);
+
+        return [
+            'files' => $result,
+            'total' => $total,
+            'page' => $page,
+            'size' => $size
+        ];
+    }
+
+    public static function getFilters() {
+        return [
+            'types' => [
+                ['value' => 'all', 'label' => '全部'],
+                ['value' => 'text', 'label' => '文本'],
+                ['value' => 'file', 'label' => '文件']
+            ],
+            'sort_fields' => [
+                ['value' => 'created_at', 'label' => '创建时间'],
+                ['value' => 'size', 'label' => '文件大小'],
+                ['value' => 'used_count', 'label' => '使用次数']
+            ]
+        ];
+    }
+}

@@ -62,8 +62,15 @@ $default_config = [
     'enable_qrcode' => true,
     'enable_password_protection' => true,
     'enable_preview' => true,
+    'enable_thumbnails' => true,
     'storage_warning_threshold' => 90,
-    'log_level' => 'info'
+    'log_level' => 'info',
+    'default_theme' => 'light',
+    'enable_hot_files' => true,
+    'hot_files_limit' => 10,
+    'hot_files_days' => 7,
+    'enable_share_history' => true,
+    'max_history_days' => 30
 ];
 
 $config_file = DATA_ROOT . '/config.json';

@@ -1,0 +1,113 @@
+<?php
+
+class ThumbnailManager {
+    private static $thumbnailsDir = 'share/thumbnails';
+    private static $supportedTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+    public static function generateThumbnail($filePath, $fileName, $maxWidth = 200, $maxHeight = 200) {
+        if (!file_exists($filePath)) {
+            return null;
+        }
+
+        $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+        if (!in_array($ext, self::$supportedTypes)) {
+            return null;
+        }
+
+        $thumbDir = DATA_ROOT . '/' . self::$thumbnailsDir;
+        if (!file_exists($thumbDir)) {
+            mkdir($thumbDir, 0755, true);
+        }
+
+        $thumbFileName = md5($fileName . time()) . '.jpg';
+        $thumbPath = $thumbDir . '/' . $thumbFileName;
+
+        list($width, $height, $type) = getimagesize($filePath);
+
+        $ratio = $width / $height;
+        if ($maxWidth / $maxHeight > $ratio) {
+            $newHeight = $maxHeight;
+            $newWidth = $newHeight * $ratio;
+        } else {
+            $newWidth = $maxWidth;
+            $newHeight = $newWidth / $ratio;
+        }
+
+        $image = null;
+        switch ($type) {
+            case IMAGETYPE_JPEG:
+                $image = imagecreatefromjpeg($filePath);
+                break;
+            case IMAGETYPE_PNG:
+                $image = imagecreatefrompng($filePath);
+                break;
+            case IMAGETYPE_GIF:
+                $image = imagecreatefromgif($filePath);
+                break;
+            case IMAGETYPE_WEBP:
+                $image = imagecreatefromwebp($filePath);
+                break;
+            default:
+                return null;
+        }
+
+        if (!$image) {
+            return null;
+        }
+
+        $newImage = imagecreatetruecolor($newWidth, $newHeight);
+        imagecopyresampled($newImage, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+
+        imagejpeg($newImage, $thumbPath, 80);
+        imagedestroy($image);
+        imagedestroy($newImage);
+
+        return self::$thumbnailsDir . '/' . $thumbFileName;
+    }
+
+    public static function getThumbnailUrl($code) {
+        $fileCode = FileCodes::findByCode($code);
+        if (!$fileCode || $fileCode->text) {
+            return null;
+        }
+
+        $ext = strtolower(ltrim($fileCode->suffix, '.'));
+        if (!in_array($ext, self::$supportedTypes)) {
+            return null;
+        }
+
+        $thumbDir = DATA_ROOT . '/' . self::$thumbnailsDir;
+        $files = glob($thumbDir . '/*');
+
+        foreach ($files as $file) {
+            if (strpos(basename($file), md5($fileCode->prefix)) !== false) {
+                return self::$thumbnailsDir . '/' . basename($file);
+            }
+        }
+
+        return null;
+    }
+
+    public static function deleteThumbnail($code) {
+        $fileCode = FileCodes::findByCode($code);
+        if (!$fileCode) {
+            return true;
+        }
+
+        $ext = strtolower(ltrim($fileCode->suffix, '.'));
+        if (!in_array($ext, self::$supportedTypes)) {
+            return true;
+        }
+
+        $thumbDir = DATA_ROOT . '/' . self::$thumbnailsDir;
+        $files = glob($thumbDir . '/*');
+
+        foreach ($files as $file) {
+            if (strpos(basename($file), md5($fileCode->prefix)) !== false) {
+                unlink($file);
+            }
+        }
+
+        return true;
+    }
+}

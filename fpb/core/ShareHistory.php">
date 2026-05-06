@@ -1,0 +1,152 @@
+<?php
+
+class ShareHistory {
+    public static function recordAction($code, $action, $ip, $userAgent, $details = []) {
+        $historyFile = DATA_ROOT . '/share_history.json';
+        $history = [];
+
+        if (file_exists($historyFile)) {
+            $history = json_decode(file_get_contents($historyFile), true) ?: [];
+        }
+
+        $record = [
+            'code' => $code,
+            'action' => $action,
+            'ip' => $ip,
+            'user_agent' => $userAgent,
+            'details' => $details,
+            'timestamp' => time(),
+            'date' => date('Y-m-d H:i:s')
+        ];
+
+        $history[] = $record;
+        file_put_contents($historyFile, json_encode($history, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        return $record;
+    }
+
+    public static function getHistory($code = null, $limit = 100) {
+        $historyFile = DATA_ROOT . '/share_history.json';
+
+        if (!file_exists($historyFile)) {
+            return [];
+        }
+
+        $history = json_decode(file_get_contents($historyFile), true) ?: [];
+        $filtered = $history;
+
+        if ($code) {
+            $filtered = array_filter($history, function($record) use ($code) {
+                return $record['code'] === $code;
+            });
+        }
+
+        $filtered = array_reverse($filtered);
+        return array_slice($filtered, 0, $limit);
+    }
+
+    public static function getStatistics($code = null) {
+        $history = self::getHistory($code, 10000);
+        $stats = [
+            'total_views' => 0,
+            'total_downloads' => 0,
+            'unique_ips' => [],
+            'daily_stats' => []
+        ];
+
+        foreach ($history as $record) {
+            $date = date('Y-m-d', $record['timestamp']);
+
+            if (!isset($stats['daily_stats'][$date])) {
+                $stats['daily_stats'][$date] = [
+                    'views' => 0,
+                    'downloads' => 0
+                ];
+            }
+
+            if ($record['action'] === 'view') {
+                $stats['total_views']++;
+                $stats['daily_stats'][$date]['views']++;
+            } elseif ($record['action'] === 'download') {
+                $stats['total_downloads']++;
+                $stats['daily_stats'][$date]['downloads']++;
+            }
+
+            if (!in_array($record['ip'], $stats['unique_ips'])) {
+                $stats['unique_ips'][] = $record['ip'];
+            }
+        }
+
+        $stats['unique_visitors'] = count($stats['unique_ips']);
+        return $stats;
+    }
+
+    public static function getHotFiles($limit = 10, $days = 7) {
+        $historyFile = DATA_ROOT . '/share_history.json';
+
+        if (!file_exists($historyFile)) {
+            return [];
+        }
+
+        $history = json_decode(file_get_contents($historyFile), true) ?: [];
+        $cutoffTime = time() - ($days * 24 * 3600);
+
+        $codeCounts = [];
+        foreach ($history as $record) {
+            if ($record['timestamp'] < $cutoffTime) {
+                continue;
+            }
+
+            if (!isset($codeCounts[$record['code']])) {
+                $codeCounts[$record['code']] = 0;
+            }
+            $codeCounts[$record['code']]++;
+        }
+
+        arsort($codeCounts);
+        $hotFiles = [];
+        $count = 0;
+
+        foreach ($codeCounts as $code => $count) {
+            if ($count >= $limit) {
+                break;
+            }
+
+            $fileCode = FileCodes::findByCode($code);
+            if (!$fileCode) {
+                continue;
+            }
+
+            $hotFiles[] = [
+                'code' => $code,
+                'name' => $fileCode->prefix . $fileCode->suffix,
+                'size' => $fileCode->size,
+                'views' => $count,
+                'is_text' => $fileCode->text !== null
+            ];
+            $count++;
+        }
+
+        return $hotFiles;
+    }
+
+    public static function clearHistory($code = null) {
+        $historyFile = DATA_ROOT . '/share_history.json';
+
+        if (!file_exists($historyFile)) {
+            return true;
+        }
+
+        if ($code) {
+            $history = json_decode(file_get_contents($historyFile), true) ?: [];
+            $newHistory = array_filter($history, function($record) use ($code) {
+                return $record['code'] !== $code;
+            });
+            file_put_contents($historyFile, json_encode($newHistory, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        } else {
+            file_put_contents($historyFile, '[]');
+        }
+
+        return true;
+    }
+}

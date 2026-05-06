@@ -1,0 +1,90 @@
+<?php
+
+class ShareSettings {
+    public static function createSettings($code, $settings = []) {
+        $defaultSettings = [
+            'password' => null,
+            'expire_style' => 'day',
+            'expire_value' => 1,
+            'max_downloads' => 0,
+            'allow_preview' => true,
+            'notify_email' => null,
+            'custom_title' => null,
+            'custom_description' => null
+        ];
+
+        $settings = array_merge($defaultSettings, $settings);
+        $settings['code'] = $code;
+
+        $filePath = DATA_ROOT . '/share_settings.json';
+        $allSettings = [];
+
+        if (file_exists($filePath)) {
+            $allSettings = json_decode(file_get_contents($filePath), true) ?: [];
+        }
+
+        $allSettings[$code] = $settings;
+        file_put_contents($filePath, json_encode($allSettings, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        return $settings;
+    }
+
+    public static function getSettings($code) {
+        $filePath = DATA_ROOT . '/share_settings.json';
+
+        if (!file_exists($filePath)) {
+            return null;
+        }
+
+        $allSettings = json_decode(file_get_contents($filePath), true) ?: [];
+        return $allSettings[$code] ?? null;
+    }
+
+    public static function updateSettings($code, $settings) {
+        $filePath = DATA_ROOT . '/share_settings.json';
+        $allSettings = [];
+
+        if (file_exists($filePath)) {
+            $allSettings = json_decode(file_get_contents($filePath), true) ?: [];
+        }
+
+        if (!isset($allSettings[$code])) {
+            return false;
+        }
+
+        $allSettings[$code] = array_merge($allSettings[$code], $settings);
+        file_put_contents($filePath, json_encode($allSettings, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        return true;
+    }
+
+    public static function deleteSettings($code) {
+        $filePath = DATA_ROOT . '/share_settings.json';
+
+        if (!file_exists($filePath)) {
+            return true;
+        }
+
+        $allSettings = json_decode(file_get_contents($filePath), true) ?: [];
+        unset($allSettings[$code]);
+
+        file_put_contents($filePath, json_encode($allSettings, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        return true;
+    }
+
+    public static function verifyPassword($code, $password) {
+        $settings = self::getSettings($code);
+
+        if (!$settings || !$settings['password']) {
+            return true;
+        }
+
+        return password_verify($password, $settings['password']);
+    }
+
+    public static function setPassword($code, $password) {
+        $hashedPassword = $password ? password_hash($password, PASSWORD_DEFAULT) : null;
+        return self::updateSettings($code, ['password' => $hashedPassword]);
+    }
+}
