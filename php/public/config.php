@@ -1,8 +1,7 @@
 <?php
 
-define('BASE_DIR', __DIR__);
+define('BASE_DIR', dirname(__DIR__));
 define('DATA_ROOT', BASE_DIR . '/data');
-define('FRONTEND_DIR', BASE_DIR . '/../fcb-fronted/dist');
 
 if (!file_exists(DATA_ROOT)) {
     mkdir(DATA_ROOT, 0755, true);
