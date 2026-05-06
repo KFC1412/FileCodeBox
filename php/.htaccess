@@ -1,0 +1,29 @@
+# Apache .htaccess
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+    
+    # 跳过已存在的文件
+    RewriteCond %{REQUEST_FILENAME} !-f
+    # 跳过已存在的目录
+    RewriteCond %{REQUEST_FILENAME} !-d
+    
+    # 将所有请求重定向到 index.php
+    RewriteRule ^(.*)$ index.php [QSA,L]
+</IfModule>
+
+# 启用GZIP压缩
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# 设置缓存
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+</IfModule>
