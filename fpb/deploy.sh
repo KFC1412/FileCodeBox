@@ -1,11 +1,11 @@
 #!/bin/bash
 
 echo "==========================================="
-echo "FileCodeBox PHP 一键部署脚本"
+echo "FilePhpBox (FPB) 一键部署脚本"
 echo "==========================================="
 
 PROJECT_DIR=$(cd "$(dirname "$0")" && pwd)
-TARGET_DIR="/var/www/filecodebox"
+TARGET_DIR="/var/www/filephpbox"
 
 echo "项目目录: $PROJECT_DIR"
 echo "目标目录: $TARGET_DIR"
@@ -18,7 +18,7 @@ echo ""
 echo "2. 复制核心文件..."
 cp "$PROJECT_DIR/index.php" "$TARGET_DIR/"
 cp "$PROJECT_DIR/config.php" "$TARGET_DIR/"
-cp "$PROJECT_DIR/database.php" "$TARGET_DIR/"
+cp "$PROJECT_DIR/check.php" "$TARGET_DIR/"
 cp "$PROJECT_DIR/.htaccess" "$TARGET_DIR/"
 
 mkdir -p "$TARGET_DIR/api" "$TARGET_DIR/core" "$TARGET_DIR/models" "$TARGET_DIR/data"
@@ -26,6 +26,7 @@ mkdir -p "$TARGET_DIR/api" "$TARGET_DIR/core" "$TARGET_DIR/models" "$TARGET_DIR/
 cp "$PROJECT_DIR/api/admin.php" "$TARGET_DIR/api/"
 cp "$PROJECT_DIR/api/share.php" "$TARGET_DIR/api/"
 
+cp "$PROJECT_DIR/core/JSONStorage.php" "$TARGET_DIR/core/"
 cp "$PROJECT_DIR/core/RateLimit.php" "$TARGET_DIR/core/"
 cp "$PROJECT_DIR/core/Response.php" "$TARGET_DIR/core/"
 cp "$PROJECT_DIR/core/Storage.php" "$TARGET_DIR/core/"
@@ -40,7 +41,6 @@ if [ -d "$PROJECT_DIR/../fcb-fronted/dist" ]; then
     echo "找到前端构建目录，复制 assets..."
     cp -r "$PROJECT_DIR/../fcb-fronted/dist/assets" "$TARGET_DIR/"
     cp "$PROJECT_DIR/../fcb-fronted/dist/index.html" "$TARGET_DIR/"
-    cp "$PROJECT_DIR/../fcb-fronted/dist/logo_small.png" "$TARGET_DIR/"
 else
     echo "警告: 前端 dist 目录不存在"
     echo "请先构建前端: cd ../fcb-fronted && npm run build"
@@ -64,8 +64,8 @@ echo ""
 echo "Apache 配置参考:"
 echo "<VirtualHost *:80>"
 echo "    ServerName your-domain.com"
-echo "    DocumentRoot /var/www/filecodebox"
-echo "    <Directory /var/www/filecodebox>"
+echo "    DocumentRoot /var/www/filephpbox"
+echo "    <Directory /var/www/filephpbox>"
 echo "        AllowOverride All"
 echo "        Require all granted"
 echo "    </Directory>"

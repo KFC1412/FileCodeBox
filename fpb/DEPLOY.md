@@ -1,4 +1,8 @@
-## FileCodeBox PHP 版本 - 上传即部署
+## FilePhpBox (FPB) - 上传即部署
+
+### 项目简介
+
+FilePhpBox (简称 FPB) 是一个基于 PHP + JSON 的轻量级文件分享系统，无需数据库，上传即部署。
 
 ### 部署方式
 
@@ -19,7 +23,7 @@ cd php
 | 项目 | 要求 |
 |------|------|
 | PHP | 7.4+ |
-| 扩展 | PDO, SQLite |
+| 扩展 | JSON |
 | 服务器 | Apache/Nginx |
 
 ### 文件结构
@@ -28,7 +32,6 @@ cd php
 php/                          # DocumentRoot
 ├── index.php                 # 主入口
 ├── config.php                # 配置文件
-├── database.php              # 数据库连接
 ├── check.php                 # 部署检测
 ├── .htaccess                 # Apache 重写规则
 ├── index.html                # 前端页面
@@ -36,7 +39,10 @@ php/                          # DocumentRoot
 ├── api/                      # API 接口
 ├── core/                     # 核心类
 ├── models/                   # 数据模型
-└── data/                     # 数据存储
+└── data/                     # 数据存储 (JSON)
+    ├── file_codes.json       # 文件信息
+    ├── key_value.json        # 配置信息
+    └── share/data/           # 上传文件
 ```
 
 ### 默认配置
@@ -58,3 +64,11 @@ php/                          # DocumentRoot
 'uploadSize' => 1024 * 1024 * 20,  // 上传大小限制(字节)
 'openUpload' => 1,                 // 允许游客上传
 ```
+
+### 特性
+
+- 🚀 上传即部署，零配置
+- 📦 纯 PHP + JSON，无需数据库
+- 🔐 支持密码保护
+- ⏰ 支持多种过期方式
+- 📱 响应式设计

@@ -67,7 +67,7 @@ function serveIndexHtml() {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FileCodeBox - 文件快递柜</title>
+    <title>FilePhpBox - 文件快递柜</title>
     <style>
         body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
         .container { text-align: center; padding: 2rem; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -78,10 +78,9 @@ function serveIndexHtml() {
 </head>
 <body>
     <div class="container">
-        <h1>FileCodeBox</h1>
+        <h1>FilePhpBox (FPB)</h1>
         <p class="message">请先构建前端或放置 index.html 文件</p>
         <p class="message">前端目录: ../fcb-fronted/dist/</p>
-        <a href="https://github.com/vastsa/FileCodeBox" class="btn" target="_blank">GitHub</a>
     </div>
 </body>
 </html>';
@@ -109,7 +108,6 @@ function serveAssets($path) {
             'eot' => 'application/vnd.ms-fontobject',
             'ico' => 'image/x-icon',
             'webp' => 'image/webp',
-            'woff2' => 'font/woff2',
         ];
         $mimeType = $mimeTypes[$ext] ?? 'application/octet-stream';
         header('Content-Type: ' . $mimeType);
