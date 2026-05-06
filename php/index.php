@@ -12,7 +12,7 @@ if ($path === '/' && $method === 'POST') {
     require_once __DIR__ . '/api/share.php';
     handleShareApi();
 } elseif (strpos($path, '/api/admin') === 0 || strpos($path, '/admin') === 0) {
-    require_once __DIR__ . '/admin.php';
+    require_once __DIR__ . '/api/admin.php';
     handleAdminApi();
 } elseif ($path === '/' || $path === '/index.php') {
     serveIndexHtml();
